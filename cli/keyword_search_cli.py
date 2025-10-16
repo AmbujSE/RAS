@@ -5,6 +5,7 @@ import argparse
 import json
 import string
 import pickle
+import math
 from pathlib import Path
 from typing import Optional, Set, List, Dict
 from collections import Counter
@@ -138,6 +139,15 @@ def main() -> None:
     tf_parser.add_argument("doc_id", type=str, help="Document ID")
     tf_parser.add_argument("term", type=str, help="Term to get frequency for")
 
+    # added idf command
+    idf_parser = subparsers.add_parser("idf", help="Compute inverse document frequency for a term")
+    idf_parser.add_argument("term", type=str, help="Term to compute IDF for")
+
+    # added tfidf command
+    tfidf_parser = subparsers.add_parser("tfidf", help="Compute TF-IDF for a term in a document")
+    tfidf_parser.add_argument("doc_id", type=str, help="Document ID")
+    tfidf_parser.add_argument("term", type=str, help="Term to compute TF-IDF for")
+
     args = parser.parse_args()
 
     match args.command:
@@ -209,6 +219,45 @@ def main() -> None:
                 print(f"Error: {e}")
                 return
             print(tf_val)
+        case "idf":
+            # load index and compute idf
+            stopwords_set = load_stopwords()
+            stemmer = PorterStemmer()
+            idx = InvertedIndex(stemmer=stemmer, stopwords_set=stopwords_set)
+            try:
+                idx.load()
+            except FileNotFoundError:
+                print("Error: inverted index cache not found. Run the 'build' command first.")
+                return
+            # get document counts
+            doc_count = len(idx.docmap)
+            term_docs = idx.get_documents(args.term)
+            term_doc_count = len(term_docs)
+            idf = math.log((doc_count + 1) / (term_doc_count + 1))
+            print(f"Inverse document frequency of '{args.term}': {idf:.2f}")
+        case "tfidf":
+            # load index and compute tf-idf
+            stopwords_set = load_stopwords()
+            stemmer = PorterStemmer()
+            idx = InvertedIndex(stemmer=stemmer, stopwords_set=stopwords_set)
+            try:
+                idx.load()
+            except FileNotFoundError:
+                print("Error: inverted index cache not found. Run the 'build' command first.")
+                return
+            # compute TF
+            try:
+                tf = idx.get_tf(args.doc_id, args.term)
+            except Exception as e:
+                print(f"Error: {e}")
+                return
+            # compute IDF
+            doc_count = len(idx.docmap)
+            term_docs = idx.get_documents(args.term)
+            term_doc_count = len(term_docs)
+            idf = math.log((doc_count + 1) / (term_doc_count + 1))
+            tf_idf = tf * idf
+            print(f"TF-IDF score of '{args.term}' in document '{args.doc_id}': {tf_idf:.2f}")
         case _:
             parser.print_help()
 
